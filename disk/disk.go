@@ -12,6 +12,8 @@ import (
 	"github.com/diskfs/go-diskfs/backend"
 	"github.com/diskfs/go-diskfs/filesystem"
 	"github.com/diskfs/go-diskfs/filesystem/ext4"
+	"github.com/diskfs/go-diskfs/filesystem/fat12"
+	"github.com/diskfs/go-diskfs/filesystem/fat16"
 	"github.com/diskfs/go-diskfs/filesystem/fat32"
 	"github.com/diskfs/go-diskfs/filesystem/iso9660"
 	"github.com/diskfs/go-diskfs/filesystem/squashfs"
@@ -156,6 +158,10 @@ func (d *Disk) CreateFilesystem(spec FilesystemSpec) (filesystem.FileSystem, err
 	}
 
 	switch spec.FSType {
+	case filesystem.TypeFat12:
+		return fat12.Create(d.Backend, size, start, d.LogicalBlocksize, spec.VolumeLabel, spec.Reproducible)
+	case filesystem.TypeFat16:
+		return fat16.Create(d.Backend, size, start, d.LogicalBlocksize, spec.VolumeLabel, spec.Reproducible)
 	case filesystem.TypeFat32:
 		return fat32.Create(d.Backend, size, start, d.LogicalBlocksize, spec.VolumeLabel, spec.Reproducible)
 	case filesystem.TypeISO9660:
@@ -199,13 +205,25 @@ func (d *Disk) GetFilesystem(partIndex int) (filesystem.FileSystem, error) {
 		start = foundPart.GetStart()
 	}
 
-	// just try each type
+	// Try FAT variants first (most specific to least specific).
 	log.Debug("trying fat32")
 	fat32FS, err := fat32.Read(d.Backend, size, start, d.LogicalBlocksize)
 	if err == nil {
 		return fat32FS, nil
 	}
 	log.Debugf("fat32 failed: %v", err)
+	log.Debug("trying fat16")
+	fat16FS, err := fat16.Read(d.Backend, size, start, d.LogicalBlocksize)
+	if err == nil {
+		return fat16FS, nil
+	}
+	log.Debugf("fat16 failed: %v", err)
+	log.Debug("trying fat12")
+	fat12FS, err := fat12.Read(d.Backend, size, start, d.LogicalBlocksize)
+	if err == nil {
+		return fat12FS, nil
+	}
+	log.Debugf("fat12 failed: %v", err)
 	pbs := d.PhysicalBlocksize
 	if d.DefaultBlocks {
 		pbs = 0

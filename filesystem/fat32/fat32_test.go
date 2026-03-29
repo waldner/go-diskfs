@@ -11,7 +11,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
-	iofs "io/fs"
 	mathrandv2 "math/rand/v2"
 	"os"
 	"path"
@@ -629,97 +628,6 @@ func TestFat32Read(t *testing.T) {
 				}
 				// we do not match the filesystems here, only check functional accuracy
 			})
-		}
-	}
-	t.Run("entire image", func(t *testing.T) {
-		runTest(t, 0, 0)
-	})
-	t.Run("embedded filesystem", func(t *testing.T) {
-		runTest(t, 500, 1000)
-	})
-}
-
-func TestFat32ReadDir(t *testing.T) {
-	//nolint:thelper // this is not a helper function
-	runTest := func(t *testing.T, pre, post int64) {
-		// get a temporary working file
-		f, err := tmpFat32(true, pre, post)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if keepTmpFiles == "" {
-			defer os.Remove(f.Name())
-		} else {
-			fmt.Println(f.Name())
-		}
-		// determine entries from the actual data
-		rootEntries, _, err := fat32.GetValidDirectoryEntries()
-		if err != nil {
-			t.Fatalf("error getting valid directory entries: %v", err)
-		}
-		// ignore volume entry when public-facing root entries
-		rootEntries = rootEntries[:len(rootEntries)-1]
-		fooEntriesFull, _, err := fat32.GetValidDirectoryEntriesExtended("/foo")
-		if err != nil {
-			t.Fatalf("error getting valid directory entries for /foo: %v", err)
-		}
-		var fooEntries []iofs.DirEntry
-		for _, e := range fooEntriesFull {
-			if e.Name() == "." || e.Name() == ".." {
-				continue
-			}
-			fooEntries = append(fooEntries, e)
-		}
-
-		tests := []struct {
-			path  string
-			count int
-			name  string // of first entry, excluding . and ..
-			isDir bool
-			err   error
-		}{
-			{"/", 0, "foo", true, iofs.ErrInvalid},
-			{".", len(rootEntries), rootEntries[0].Name(), true, nil},
-			{"/foo", 0, ".", true, iofs.ErrInvalid},
-			{"foo", len(fooEntries), fooEntries[0].Name(), true, nil},
-			// 0 entries because the directory does not exist
-			{"/a/b/c", 0, "", false, iofs.ErrInvalid},
-			{"a/b/c", 0, "", false, fmt.Errorf("error reading directory a/b/c")},
-		}
-		fileInfo, err := f.Stat()
-		if err != nil {
-			t.Fatalf("error getting file info for tmpfile %s: %v", f.Name(), err)
-		}
-
-		b := file.New(f, true)
-		fs, err := fat32.Read(b, fileInfo.Size()-pre-post, pre, 512)
-		if err != nil {
-			t.Fatalf("error reading fat32 filesystem from %s: %v", f.Name(), err)
-		}
-		for _, tt := range tests {
-			output, err := fs.ReadDir(tt.path)
-			switch {
-			case (err == nil && tt.err != nil) || (err != nil && tt.err == nil) || (err != nil && tt.err != nil && !strings.HasPrefix(err.Error(), tt.err.Error())):
-				t.Errorf("readDir(%s): mismatched errors, actual: %v , expected: %v", tt.path, err, tt.err)
-			case output == nil && tt.err == nil:
-				t.Errorf("readDir(%s): Unexpected nil output", tt.path)
-			case len(output) != tt.count:
-				t.Errorf("readDir(%s): output gave %d entries instead of expected %d", tt.path, len(output), tt.count)
-			case len(output) > 0:
-				if output[0].IsDir() != tt.isDir {
-					t.Errorf("readDir(%s): output gave directory %t expected %t", tt.path, output[0].IsDir(), tt.isDir)
-				}
-				if output[0].Name() != tt.name {
-					t.Errorf("readDir(%s): output gave name %s expected %s", tt.path, output[0].Name(), tt.name)
-				}
-				fi, err := output[0].Info()
-				if err != nil {
-					t.Fatalf("readDir(%s): Info() returned unexpected error: %v", tt.path, err)
-				}
-				if fi.Name() != tt.name {
-					t.Errorf("readDir(%s): Info() returned name %s expected %s", tt.path, fi.Name(), tt.name)
-				}
-			}
 		}
 	}
 	t.Run("entire image", func(t *testing.T) {

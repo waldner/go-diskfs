@@ -1,4 +1,4 @@
-package fat32
+package fat12
 
 import (
 	"encoding/binary"
@@ -396,7 +396,7 @@ func lfnChecksum(name, extension string) (byte, error) {
 	for i := 3; i > length; i-- {
 		extensionBytes = append(extensionBytes, 0x20)
 	}
-	b := make([]byte, len(nameBytes))
+	b := make([]byte, len(nameBytes), len(nameBytes)+len(extensionBytes))
 	copy(b, nameBytes)
 	b = append(b, extensionBytes...)
 
